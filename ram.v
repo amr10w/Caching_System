@@ -7,7 +7,7 @@ module Ram #(
     input wire write_enable,
     input wire read_enable,
     input wire clk,
-    input wire reset,
+    input wire reset_n,
     output reg [WIDTH-1:0] data_out,
     output reg valid_out
 );
@@ -25,8 +25,8 @@ module Ram #(
     end
 
     integer k;
-    always @(posedge clk) begin
-        if (reset) begin
+    always @(posedge clk or negedge reset_n) begin
+        if (!reset_n) begin
             data_out <= 0;
             valid_out <= 1'b0;
             for (k = 0; k < DEPTH_MEM; k=k+1) begin

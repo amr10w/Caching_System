@@ -3,15 +3,14 @@ module Cache #(
     parameter address_width = 16,
     parameter block_offset = 2,
     parameter index_bits = address_width - block_offset-2,
-    parameter tag_bits = address_width - block_offset - index_bits-2,
-    parameter ways = 2
+    parameter tag_bits = address_width - block_offset - index_bits-2
 )(
     input wire [address_width-1:0] address,
     input wire [data_width-1:0] data_in,
     input wire write_enable,
     input wire read_enable,
     input wire clk,
-    input wire reset,
+    input wire reset_n,
     output reg [data_width-1:0] data_out,    
     output reg hit_out
 
@@ -75,34 +74,6 @@ module Cache #(
         end
     end
 
-    always @(posedge clk) begin
-        if (reset) begin
-            data_out <= 0;
-            hit_out <= 1'b0;
-            for (k = 0; k < index_width; k++) begin
-                valid_1[k] <= 1'b0;
-                dirty_1[k] <= 1'b0;
-                LRU_1[k] <= 2'b00;
-                tag_1[k] <= 0;
-                data_1[k] <= 0;
-                valid_2[k] <= 1'b0;
-                dirty_2[k] <= 1'b0;
-                LRU_2[k] <= 2'b00;
-                tag_2[k] <= 0;
-                data_2[k] <= 0;
-                valid_3[k] <= 1'b0;
-                dirty_3[k] <= 1'b0;
-                LRU_3[k] <= 2'b00;
-                tag_3[k] <= 0;
-                data_3[k] <= 0;
-                valid_4[k] <= 1'b0;
-                dirty_4[k] <= 1'b0;
-                LRU_4[k] <= 2'b00;
-                tag_4[k] <= 0;
-                data_4[k] <= 0;
-            end
-        end
-        
-    end
+    
 
 endmodule
