@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 module Ram #(
     parameter WIDTH = 32,
     parameter DEPTH = 4 
@@ -12,9 +13,7 @@ module Ram #(
     output reg valid_out
 );
 
-    
     localparam DEPTH_MEM = 1 << DEPTH;
-
     reg [WIDTH-1:0] mem [0:DEPTH_MEM-1];
 
     integer i;
@@ -45,5 +44,4 @@ module Ram #(
             end 
         end
     end
-
 endmodule
