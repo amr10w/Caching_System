@@ -4,7 +4,7 @@ module tb_cache_system;
 
     // Parameters
     parameter WIDTH = 32;
-    parameter MWIDTH = 64; // Block size
+    parameter MWIDTH = 32; // Block size
     parameter ADDR_WIDTH = 16; // As per test requirement (approx)
                                // Cache default is 32-bit address, but test uses 16.
                                // We need to map 16 to Cache.v's expected width if necessary.
@@ -300,7 +300,6 @@ module tb_cache_system;
             $display("FAIL: Expected 0xFFFFFFFF, got 0x%h\n", q);
         
         $display("Step 2: Force eviction of dirty line\n");
-        $display("Current LRU order: 0x8000 > 0x2000 > 0xC000 > 0x4000 > 0x6000");
         $display("Accessing multiple new addresses to eventually evict dirty line 0x8000");
         
         // Access enough addresses to cycle through and evict 0x8000
@@ -320,6 +319,14 @@ module tb_cache_system;
         cpu_access(32'h00004000, 0, 0); // This should evict dirty 0x8000
         $display("  Accessed 0x00004000 - This evicts dirty line 0x8000");
         $display("Dirty line written back to memory\n");
+        
+        // Explicit RAM Verification
+        #10; // Wait a bit for write to complete
+        if (dut_ram.mem[16'h8000] == 64'h0000_0000_FFFF_FFFF)
+             $display("  [SUCCESS] RAM Check: RAM[0x8000] updated to 0xFFFFFFFF");
+        else
+             $display("  [FAILURE] RAM Check: RAM[0x8000] = 0x%h, Expected 0xFFFFFFFF", dut_ram.mem[16'h8000]);
+
         
         $display("Step 4: Verify write-back to main memory");
         $display("Reading 0x00008000 again (should reload from memory with written data)");
