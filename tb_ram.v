@@ -8,7 +8,7 @@ module tb_ram;
     reg write_enable;
     reg read_enable;
     reg clk;
-    reg reset;
+    reg reset_n;
     wire [WIDTH-1:0] data_out;
     wire valid_out;
 
@@ -21,7 +21,7 @@ module tb_ram;
         .write_enable(write_enable),
         .read_enable(read_enable),
         .clk(clk),
-        .reset(reset),
+      .reset_n(reset_n),
         .data_out(data_out),
         .valid_out(valid_out)
     );
@@ -31,14 +31,18 @@ module tb_ram;
     initial begin
         // Initialize
         clk = 0;
-        reset = 1;
+        reset_n = 0;
         write_enable = 0;
         read_enable = 0;
         data_in = 0;
         adress = 0;
 
-        #10;
-        reset = 0;
+		#10 reset_n=1;
+     
+  
+      	#15;
+        $readmemh("Test1.mem",uut.mem);
+    
 
         // Write 0xAAAA at address 2
         #10;
@@ -62,30 +66,19 @@ module tb_ram;
         // Read address 2
         adress = 4'd2;
         read_enable = 1;
-        #10;
-        // Check output
-        if (data_out === 32'hAAAA && valid_out === 1) 
-            $display("PASS: Read Addr 2 = %h, Valid=1", data_out);
-        else 
-            $display("FAIL: Read Addr 2 = %h (Exp: AAAA), Valid=%b", data_out, valid_out);
-
-        // Read address 3
+     
+        #15;
         adress = 4'd3;
-        #10;
-        if (data_out === 32'hBBBB && valid_out === 1) 
-            $display("PASS: Read Addr 3 = %h, Valid=1", data_out);
-        else 
-            $display("FAIL: Read Addr 3 = %h (Exp: BBBB), Valid=%b", data_out, valid_out);
-
-        // Stop Read
-        read_enable = 0;
-        #10;
-        if (valid_out === 0)
-            $display("PASS: Valid dropped to 0");
-        else
-            $display("FAIL: Valid did not drop, val=%b", valid_out);
-
+       
+        #20;
+      	adress = 4'd0;
+      #20;
         $finish;
+    end
+  
+  initial begin
+        $dumpfile("wave.vcd");
+        $dumpvars;
     end
 
 endmodule

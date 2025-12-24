@@ -14,7 +14,7 @@ module tb_cache_system;
     // Signals
     reg clk;
     reg reset_n;
-    reg [WIDTH-1:0] address;
+    reg [ADDR_WIDTH-1:0] address;
     reg [WIDTH-1:0] din;
     reg wren;
     reg rden;
@@ -24,9 +24,9 @@ module tb_cache_system;
     
     // RAM Interface Signals form Cache
     wire [MWIDTH-1:0] mdout;
-    wire [WIDTH-1:0]  mrdaddress;
+    wire [ADDR_WIDTH-1:0]  mrdaddress;
     wire              mrden;
-    wire [WIDTH-1:0]  mwraddress;
+    wire [ADDR_WIDTH-1:0]  mwraddress;
     wire              mwren;
     wire [MWIDTH-1:0] mq; // Input to Cache (from RAM)
 
@@ -46,9 +46,13 @@ module tb_cache_system;
     Cache #(
         .WIDTH(WIDTH),
         .MWIDTH(MWIDTH),
-        .NSETS(1024),     // Must match the `define INDEX macro (10 bits = 1024 sets)
+      .NSETS(64),     
         .NWAYS(4),
-        .BLOCK_SIZE(MWIDTH) // Check logic
+      .BLOCK_SIZE(MWIDTH), // Check logic
+      .INDEX_WIDTH(6),
+      .TAG_WIDTH(8),
+      .OFFSET_WIDTH(3)
+      
     ) dut_cache (
         .clk(clk),
         .reset_n(reset_n),
@@ -74,13 +78,22 @@ module tb_cache_system;
     
     assign ram_write_enable = mwren;
     assign ram_read_enable  = mrden;
-    assign ram_address      = mwren ? mwraddress[ADDR_WIDTH-1:0] : mrdaddress[ADDR_WIDTH-1:0];
+    assign ram_address      = mwren ? mwraddress[ADDR_WIDTH-1:0] : 				mrdaddress[ADDR_WIDTH-1:0];
     assign ram_data_in      = mdout;
     assign mq               = ram_data_out; 
-    // Note: 'ram_valid_out' is ignored by Cache as per design (Cache assumes latency state logic).
-    // Assuming Ram responds in time for REFILL/FETCH state transition.
-    
-    // RAM Module
+  wire [1:0] l1;
+  wire [1:0] l2;
+  wire [1:0] l3;
+    wire [1:0] l4;
+  wire [31:0] m1;
+  wire [31:0] m2;
+  wire [31:0] m3;
+  wire [31:0] m4;
+  wire d1;
+  wire d2;
+  wire d3;
+  wire d4;
+      // RAM Module
     Ram #(
         .WIDTH(MWIDTH),   // RAM stores BLOCKS (64 bits)
         .DEPTH(ADDR_WIDTH) // 16 bits address
@@ -94,269 +107,133 @@ module tb_cache_system;
         .data_out(ram_data_out),
         .valid_out(ram_valid_out)
     );
-
+	assign l1=dut_cache.lru1[0];
+  	assign l2=dut_cache.lru2[0];
+  	assign l3=dut_cache.lru3[0];
+  	assign l4=dut_cache.lru4[0];
+  	assign m1=dut_cache.mem1[0];
+  	assign m2=dut_cache.mem2[0];
+  	assign m3=dut_cache.mem3[0];
+  	assign m4=dut_cache.mem4[0];
+  	assign d1=dut_cache.dirty1[0];
+    assign d2=dut_cache.dirty2[0];
+    assign d3=dut_cache.dirty3[0];
+    assign d4=dut_cache.dirty4[0];
     // Clock
     always #5 clk = ~clk;
+	initial begin
+      	clk = 0;
+      address=0;
+      reset_n=0;
+      rden=0;
+      wren=0;
+      din=0;
 
-    // Tasks
-    task cpu_access(input [WIDTH-1:0] addr, input [WIDTH-1:0] data, input is_write);
-        begin
-            @(posedge clk);
-            address = addr;
-            if (is_write) begin
-                din = data;
-                wren = 1;
-                rden = 0;
-            end else begin
-               din = 0;
-               wren = 0;
-               rden = 1;
-            end
+        #10 reset_n=1;
+     
+  
+      	#15;
+        $readmemh("Test1.mem",dut_ram.mem);
+      	#10
+        address = 16'h0100;
+        rden = 1;
+      #15 rden=0;
+      #33
+      address = 16'h0200;
+        rden = 1;
+      #15 rden=0;
+      #32
+      address = 16'h0300;
+        rden = 1;
+      #15rden=0;
+      #33
+      address = 16'h0400;
+        rden = 1;
+      #15 rden=0;
+      #33
+      address = 16'h0500;
+        rden = 1;
+      #15 rden=0;
+      #50
+      // Hits:
+      address = 16'h0100;
+        rden = 1;
+      #10 rden = 0;
+      #10
+      
+      address = 16'h0200;
+        rden = 1;
+     
+       #10 rden = 0;
+      #10
+      
+      address = 16'h0300;
+        rden = 1;
+   
+      #10 rden = 0;
+      #10
+      
+      address = 16'h0400;
+        rden = 1;
+      #30
+      address = 16'h0600;
+        rden = 1;
+      #15 rden=0;
+      #33
+      address = 16'h0800;
+        rden = 1;
+      #15 rden=0;
+      #70
+      address = 16'h0600;
+              rden = 1;
+            #10 rden = 0;
+            #10
             
-            // Wait for Hit (hit_miss = 1)
-            // If it's a miss, it might take many cycles.
-            @(posedge clk);
-            while (hit_miss == 0) @(posedge clk);
-            
-            // Now hit_miss is 1, wait one more cycle for data to be valid
-            @(posedge clk);
-            
-            // Clear the request
-            wren = 0;
-            rden = 0;
-            address = 0;
-            
-            // Wait 1 cycle after operation to clear
-            @(posedge clk);
-        end
-    endtask
-
-    // Task to pre-load main memory with data
-    task preload_memory(input [WIDTH-1:0] addr, input [MWIDTH-1:0] data);
-        begin
-            @(posedge clk);
-            // Directly write to RAM (simulate memory initialization)
-            dut_ram.mem[addr[ADDR_WIDTH-1:0]] = data;
-            $display("  Memory[0x%h] initialized with 0x%h", addr, data);
-        end
-    endtask
-
-    initial begin
-        // Initialize
-        clk = 0;
-        reset_n = 0;
-        address = 0;
-        din = 0;
-        wren = 0;
-        rden = 0;
-        
-        #20 reset_n = 1;
-        #10;
-        
-        $display("\n========================================");
-        $display("COMPREHENSIVE CACHE SIMULATION TEST");
-        $display("========================================\n");
-        
-        // ============================================================
-        // PHASE 1: PRE-ALLOCATE MAIN MEMORY WITH DATA
-        // ============================================================
-        $display("PHASE 1: Pre-allocating Main Memory with Data");
-        $display("--------------------------------------------");
-        
-        // Pre-load memory locations with known data
-        // We'll use Set 0 (Index=0) with different tags
-        // Tag bits [31:13], Index bits [12:3], Offset bits [2:0]
-        preload_memory(32'h00002000, 64'h0000_0000_DEAD_BEEF); // Tag=1
-        preload_memory(32'h00004000, 64'h0000_0000_CAFE_BABE); // Tag=2
-        preload_memory(32'h00006000, 64'h0000_0000_1234_5678); // Tag=3
-        preload_memory(32'h00008000, 64'h0000_0000_ABCD_EF00); // Tag=4
-        preload_memory(32'h0000A000, 64'h0000_0000_9999_8888); // Tag=5
-        preload_memory(32'h0000C000, 64'h0000_0000_7777_6666); // Tag=6
-        preload_memory(32'h0000E000, 64'h0000_0000_5555_4444); // Tag=7
-        preload_memory(32'h00010000, 64'h0000_0000_3333_2222); // Tag=8
-        
-        #20;
-        
-        // ============================================================
-        // PHASE 2: CPU REQUESTS - 5 MISSES (Cache fetches from memory)
-        // ============================================================
-        $display("\nPHASE 2: CPU Requests - 5 Cold Misses");
-        $display("--------------------------------------------");
-        $display("Cache is empty, all requests will MISS and fetch from main memory\n");
-        
-        $display("Request 1: Read 0x00002000 (Expected MISS)");
-        cpu_access(32'h00002000, 0, 0); // Read - MISS
-        if (q == 32'hDEAD_BEEF) 
-            $display("MISS handled correctly, data fetched: 0x%h\n", q);
-        else 
-            $display("FAIL: Expected 0xDEADBEEF, got 0x%h\n", q);
-        
-        $display("Request 2: Read 0x00004000 (Expected MISS)");
-        cpu_access(32'h00004000, 0, 0); // Read - MISS
-        if (q == 32'hCAFE_BABE) 
-            $display("MISS handled correctly, data fetched: 0x%h\n", q);
-        else 
-            $display("FAIL: Expected 0xCAFEBABE, got 0x%h\n", q);
-        
-        $display("Request 3: Read 0x00006000 (Expected MISS)");
-        cpu_access(32'h00006000, 0, 0); // Read - MISS
-        if (q == 32'h1234_5678) 
-            $display("MISS handled correctly, data fetched: 0x%h\n", q);
-        else 
-            $display("FAIL: Expected 0x12345678, got 0x%h\n", q);
-        
-        $display("Request 4: Read 0x00008000 (Expected MISS)");
-        cpu_access(32'h00008000, 0, 0); // Read - MISS
-        if (q == 32'hABCD_EF00) 
-            $display("MISS handled correctly, data fetched: 0x%h\n", q);
-        else 
-            $display("FAIL: Expected 0xABCDEF00, got 0x%h\n", q);
-        
-        $display("Request 5: Read 0x0000A000 (Expected MISS)");
-        cpu_access(32'h0000A000, 0, 0); // Read - MISS
-        if (q == 32'h9999_8888) 
-            $display("MISS handled correctly, data fetched: 0x%h\n", q);
-        else 
-            $display("FAIL: Expected 0x99998888, got 0x%h\n", q);
-        
-        $display("Summary: All 4 ways in Set 0 are now FULL");
-        
-        // ============================================================
-        // PHASE 3: CACHE HITS - 4 TIMES
-        // ============================================================
-        $display("\nPHASE 3: Cache Hits - Accessing Cached Data");
-        $display("--------------------------------------------");
-        $display("All subsequent accesses to cached addresses should HIT\n");
-        
-        $display("Hit 1: Read 0x00002000");
-        cpu_access(32'h00002000, 0, 0); // Read - HIT
-        if (q == 32'hDEAD_BEEF) 
-            $display("HIT! Data: 0x%h\n", q);
-        else 
-            $display("FAIL: Expected 0xDEADBEEF, got 0x%h\n", q);
-        
-        $display("Hit 2: Read 0x00004000");
-        cpu_access(32'h00004000, 0, 0); // Read - HIT
-        if (q == 32'hCAFE_BABE) 
-            $display("HIT! Data: 0x%h\n", q);
-        else 
-            $display("FAIL: Expected 0xCAFEBABE, got 0x%h\n", q);
-        
-        $display("Hit 3: Read 0x00006000");
-        cpu_access(32'h00006000, 0, 0); // Read - HIT
-        if (q == 32'h1234_5678) 
-            $display("HIT! Data: 0x%h\n", q);
-        else 
-            $display("FAIL: Expected 0x12345678, got 0x%h\n", q);
-        
-        $display("Hit 4: Read 0x00008000");
-        cpu_access(32'h00008000, 0, 0); // Read - HIT
-        if (q == 32'hABCD_EF00) 
-            $display("HIT! Data: 0x%h\n", q);
-        else 
-            $display("FAIL: Expected 0xABCDEF00, got 0x%h\n", q);
-        
-        // ============================================================
-        // PHASE 4: TEST LRU (Least Recently Used) EVICTION
-        // ============================================================
-        $display("\nPHASE 4: Testing LRU Eviction Policy");
-        $display("--------------------------------------------");
-        $display("Current state: 4 ways full in Set 0");
-        $display("LRU order (most to least recent): 0x8000 > 0x6000 > 0x4000 > 0x2000");
-        $display("Next access will cause 0x2000 (LRU) to be evicted\n");
-        
-        $display("Accessing new address 0x0000C000 (Tag=6)");
-        $display("This should evict 0x00002000 (the LRU entry)");
-        cpu_access(32'h0000C000, 0, 0); // Read - MISS, evicts LRU
-        if (q == 32'h7777_6666) 
-            $display("New data loaded: 0x%h\n", q);
-        else 
-            $display("FAIL: Expected 0x77776666, got 0x%h\n", q);
-        
-        $display("Verify eviction: Try to access 0x00002000");
-        $display("This should MISS (was evicted) and reload from memory");
-        cpu_access(32'h00002000, 0, 0); // Read - MISS (was evicted)
-        if (q == 32'hDEAD_BEEF) 
-            $display("Eviction confirmed! Data reloaded from memory: 0x%h\n", q);
-        else 
-            $display("FAIL: Expected 0xDEADBEEF, got 0x%h\n", q);
-        
-        // ============================================================
-        // PHASE 5: TEST WRITE-BACK MECHANISM
-        // ============================================================
-        $display("\nPHASE 5: Testing Write-Back on Dirty Line Eviction");
-        $display("--------------------------------------------");
-        $display("Step 1: Write to cache (make line dirty)\n");
-        
-        $display("Writing 0xFFFF_FFFF to address 0x00008000");
-        cpu_access(32'h00008000, 32'hFFFF_FFFF, 1); // Write - HIT, makes dirty
-        $display("Write completed, line is now DIRTY\n");
-        
-        $display("Verify write:");
-        cpu_access(32'h00008000, 0, 0); // Read back
-        if (q == 32'hFFFF_FFFF) 
-            $display("Data verified in cache: 0x%h\n", q);
-        else 
-            $display("FAIL: Expected 0xFFFFFFFF, got 0x%h\n", q);
-        
-        $display("Step 2: Force eviction of dirty line\n");
-        $display("Accessing multiple new addresses to eventually evict dirty line 0x8000");
-        
-        // Access enough addresses to cycle through and evict 0x8000
-        cpu_access(32'h0000A000, 0, 0); // Evicts 0x6000
-        $display("  Accessed 0x0000A000");
-        
-        cpu_access(32'h0000E000, 0, 0); // Evicts 0x4000
-        $display("  Accessed 0x0000E000");
-        
-        cpu_access(32'h00010000, 0, 0); // Evicts 0xC000
-        $display("  Accessed 0x00010000");
-        
-        cpu_access(32'h00006000, 0, 0); // Evicts 0x2000
-        $display("  Accessed 0x00006000");
-        
-        $display("\nStep 3: Evict the dirty line (0x8000)");
-        cpu_access(32'h00004000, 0, 0); // This should evict dirty 0x8000
-        $display("  Accessed 0x00004000 - This evicts dirty line 0x8000");
-        $display("Dirty line written back to memory\n");
-        
-        // Explicit RAM Verification
-        #10; // Wait a bit for write to complete
-        if (dut_ram.mem[16'h8000] == 64'h0000_0000_FFFF_FFFF)
-             $display("  [SUCCESS] RAM Check: RAM[0x8000] updated to 0xFFFFFFFF");
-        else
-             $display("  [FAILURE] RAM Check: RAM[0x8000] = 0x%h, Expected 0xFFFFFFFF", dut_ram.mem[16'h8000]);
-
-        
-        $display("Step 4: Verify write-back to main memory");
-        $display("Reading 0x00008000 again (should reload from memory with written data)");
-        cpu_access(32'h00008000, 0, 0); // MISS, reload from memory
-        if (q == 32'hFFFF_FFFF) 
-            $display("WRITE-BACK VERIFIED! Written data retrieved from memory: 0x%h", q);
-        else 
-            $display("FAIL: Expected 0xFFFFFFFF (written data), got 0x%h", q);
-        
-        // ============================================================
-        // FINAL SUMMARY
-        // ============================================================
-        $display("\n========================================");
-        $display("TEST SUMMARY");
-        $display("========================================");
-        $display("Phase 1: Memory pre-allocation completed");
-        $display("Phase 2: 5 Cold misses handled correctly");
-        $display("Phase 3: 4 Cache hits verified");
-        $display("Phase 4: LRU eviction policy working");
-        $display("Phase 5: Write-back mechanism verified");
-        $display("========================================\n");
-        
-        #100;
-        $finish;
+            address = 16'h0800;
+              rden = 1;
+           
+             #10 rden = 0;
+            #10
+ 
+      address = 16'h0a00;
+        rden = 1;
+      #15 rden=0;
+      #70;
+      
+      address=16'h0a00;
+      din= 32'h 0dda_4444;
+      wren = 1;
+      #12 wren=0;
+      #50;
+      address = 16'h0400;
+        rden = 1;
+     
+       #12 rden = 0;
+      #12
+      
+      address = 16'h0600;
+        rden = 1;
+   
+      #12 rden = 0;
+      #12
+      
+      address = 16'h0800;
+        rden = 1;
+      #12 rden = 0;
+      #50;
+      address = 16'h0c00;
+      rden = 1;
+      #12 rden=1;
+      #80;
+    	$finish;
+      
     end
-
     
-initial begin
-    $dumpfile("wave.vcd");
-    $dumpvars;
-end
+    initial begin
+        $dumpfile("wave.vcd");
+        $dumpvars;
+    end
+  
+  
 
 endmodule

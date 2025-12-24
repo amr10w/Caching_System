@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-`timescale 1ns/1ps
+
 module Ram #(
     parameter WIDTH = 32,
     parameter DEPTH = 4 
@@ -17,12 +17,7 @@ module Ram #(
     localparam DEPTH_MEM = 1 << DEPTH;
     reg [WIDTH-1:0] mem [0:DEPTH_MEM-1];
 
-    integer i;
-    initial begin
-        for (i = 0; i < DEPTH_MEM; i=i+1) begin
-            mem[i] <= 0;
-        end
-    end
+ 
 
     integer k;
     always @(posedge clk or negedge reset_n) begin
@@ -45,6 +40,8 @@ module Ram #(
             end 
         end
     end
+   
+    
 endmodule
 
 module Cache
@@ -124,29 +121,7 @@ reg [1:0]           lru4   [0:NSETS-1];
 reg [TAG_WIDTH-1:0] tag4   [0:NSETS-1];
 reg [MWIDTH-1:0]    mem4   [0:NSETS-1] /* synthesis ramstyle = "M20K" */;
 
-// Write Buffer removed
 
-// initialize the cache to zero
-integer k;
-initial
-begin
-    for(k = 0; k < NSETS; k = k +1)
-    begin
-        valid1[k] = 0;
-        valid2[k] = 0;
-        valid3[k] = 0;
-        valid4[k] = 0;
-        dirty1[k] = 0;
-        dirty2[k] = 0;
-        dirty3[k] = 0;
-        dirty4[k] = 0;
-        lru1[k] = 2'b00;
-        lru2[k] = 2'b00;
-        lru3[k] = 2'b00;
-        lru4[k] = 2'b00;
-    end
-// wbuffer initialization removed
-end
 
 // internal registers
 reg              _hit_miss = 1'b0;
@@ -184,14 +159,39 @@ reg [1:0] victim_way;
 /*******************************************************************
 * State Machine
 *******************************************************************/
-
+integer k;
 always @(posedge clk or negedge reset_n)
 begin   
     if (!reset_n) begin
         currentState <= IDLE;
         _mwren <= 0;
         _mrden <= 0;
+        
         _hit_miss <= 0;
+      	 
+       for(k = 0; k < NSETS; k = k +1)
+    	begin
+          valid1[k] = 0;
+          valid2[k] = 0;
+          valid3[k] = 0;
+          valid4[k] = 0;
+          dirty1[k] = 0;
+          dirty2[k] = 0;
+          dirty3[k] = 0;
+          dirty4[k] = 0;
+          lru1[k] = 2'b00;
+          lru2[k] = 2'b01;
+          lru3[k] = 2'b11;
+          lru4[k] = 2'b10;
+          tag1[k]=0;
+          tag2[k]=0;
+          tag3[k]=0;
+          tag4[k]=0;
+          mem1[k] =0;
+          mem2[k] =0;
+          mem3[k] =0;
+          mem4[k] =0;
+    	end
     end 
     else begin
         case (currentState)
@@ -201,7 +201,8 @@ begin
                 
                 // Do nothing if no request
                 if (!rden && !wren) begin
-                   _hit_miss <= 0; 
+                   _hit_miss <= 0;
+                  currentState<=IDLE;
                 end
                 
                 // Check Hit
@@ -400,7 +401,7 @@ begin
                         dirty4[address[INDEX_HIGH:INDEX_LOW]] <= wren;
                     end
                 endcase
-                
+                _q<=new_block;
                 currentState <= IDLE;
             end
         endcase
