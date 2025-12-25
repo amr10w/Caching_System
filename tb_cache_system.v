@@ -228,7 +228,10 @@ module tb_cache_system;
     	$finish;
       
     end
-    
+    initial begin
+    $monitor("Time: %0t | RAM[0x0a00] updated to: %h", 
+             $time, dut_ram.mem[16'h0a00]);
+end
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars;
